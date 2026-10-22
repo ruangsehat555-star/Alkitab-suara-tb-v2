@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#173c35">
+  <title>Alkitab Suara V2 TB</title>
+  <style>
+    :root{--green:#173c35;--green2:#24594d;--gold:#e5bd73;--paper:#fbf8f0;--ink:#202923;--muted:#65716a;--line:#e3e5dc}
+    *{box-sizing:border-box} body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+    header{background:linear-gradient(135deg,var(--green),var(--green2));color:white;padding:25px 18px 28px;text-align:center;border-radius:0 0 25px 25px}
+    .logo{font-size:35px} h1{font-size:25px;line-height:1.2;margin:6px 0} header p{margin:7px 0 0;color:#e5eee9;font-size:14px}
+    main{max-width:760px;margin:0 auto;padding:18px 14px 40px}.panel{background:white;border:1px solid var(--line);border-radius:18px;padding:16px;margin:0 0 15px;box-shadow:0 4px 15px #1d332008}
+    label{display:block;font-weight:650;margin-bottom:7px}.searchrow{display:flex;gap:8px} input{width:100%;min-width:0;border:1px solid #cdd5ce;border-radius:12px;padding:13px;font:inherit;outline-color:var(--green2)}
+    button{border:0;border-radius:12px;padding:12px 15px;font:inherit;font-weight:700;cursor:pointer;background:var(--green);color:white}button:disabled{opacity:.55;cursor:wait}.secondary{background:#edf3ef;color:var(--green)}.gold{background:var(--gold);color:#342817}
+    .btnrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.hint,.status{font-size:13px;color:var(--muted)}.status{margin-top:10px;min-height:20px}.examples{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}.chip{font-size:13px;border:1px solid var(--line);border-radius:99px;padding:5px 10px;background:#fafbf8;cursor:pointer;color:#34483e}
+    .ref{font-weight:800;color:var(--green2);font-size:19px}.verse{padding:13px 0;border-bottom:1px solid var(--line)}.verse:last-child{border-bottom:0}.num{font-weight:800;color:#a2762c;margin-right:7px}.verse p{margin:0;display:inline}.empty{text-align:center;color:var(--muted);padding:24px 5px}.controls{display:flex;align-items:center;gap:9px;flex-wrap:wrap}.controls label{margin:0;font-size:14px}.controls select{padding:8px;border:1px solid var(--line);border-radius:9px;background:white;font:inherit}.footer{text-align:center;color:var(--muted);font-size:12px;padding:8px}
+    @media(max-width:430px){.searchrow{flex-direction:column}.searchrow button{width:100%}h1{font-size:23px}}
+  </style>
+</head>
+<body>
+<header><div class="logo" aria-hidden="true">📖</div><h1>Alkitab Suara V2</h1><p>Terjemahan Baru (TB) · Cari dan dengarkan Firman Tuhan</p></header>
+<main>
+  <section class="panel">
+    <label for="reference">Sebutkan referensi Alkitab</label>
+    <div class="searchrow"><input id="reference" type="text" autocomplete="off" placeholder="Contoh: Matius pasal 5 ayat 1 sampai 5"><button id="searchBtn">Buka ayat</button></div>
+    <div class="btnrow"><button id="micBtn" class="gold">🎙️ Panggil dengan suara</button><button id="stopMicBtn" class="secondary" hidden>Berhenti mendengar</button></div>
+    <div id="status" class="status" role="status">Tekan mikrofon, lalu ucapkan referensi Alkitab.</div>
+    <div class="hint">Contoh perintah:</div>
+    <div class="examples">
+      <button class="chip" data-ref="Matius 5">Matius 5</button><button class="chip" data-ref="Matius pasal 5 ayat 1">Matius pasal 5 ayat 1</button><button class="chip" data-ref="Matius pasal 5 ayat 1 sampai 5">Matius 5:1–5</button><button class="chip" data-ref="1 Korintus 1">1 Korintus 1</button><button class="chip" data-ref="1 Korintus pasal 1 ayat 1 sampai 5">1 Korintus 1:1–5</button>
+    </div>
+  </section>
+  <section class="panel">
+    <div class="controls"><label for="voiceRate">Kecepatan suara</label><select id="voiceRate"><option value="0.8">Lambat</option><option value="1" selected>Normal</option><option value="1.15">Agak cepat</option></select><button id="readBtn" class="secondary" disabled>🔊 Bacakan</button><button id="pauseBtn" class="secondary" disabled>Jeda</button><button id="resumeBtn" class="secondary" disabled>Lanjutkan</button><button id="stopReadBtn" class="secondary" disabled>Hentikan</button></div>
+  </section>
+  <section class="panel" aria-live="polite"><div id="referenceTitle" class="ref">Selamat datang</div><div id="verses" class="empty">Hasil bacaan akan muncul di sini.</div></section>
+  <div class="footer">Gunakan mikrofon browser saat diminta. API key disimpan di pengaturan Netlify, bukan di halaman ini.</div>
+</main>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const input=$('reference'), status=$('status'), versesBox=$('verses'), title=$('referenceTitle');
+  let currentText='', recognition=null, listening=false;
+  const sayStatus = text => status.textContent=text;
+  function normalize(s){return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[–—]/g,'-').replace(/\b(satu|pertama)\b/g,'1').replace(/\b(dua|kedua)\b/g,'2').replace(/\b(tiga|ketiga)\b/g,'3').replace(/\b(empat)\b/g,'4').replace(/\b(lima)\b/g,'5').replace(/\b(enam)\b/g,'6').replace(/\b(tujuh)\b/g,'7').replace(/\b(delapan)\b/g,'8').replace(/\b(sembilan)\b/g,'9').replace(/\b(sepuluh)\b/g,'10').replace(/\b(sebelas)\b/g,'11').replace(/\b(dua belas)\b/g,'12').replace(/\b(sampai dengan|sampai|hingga|s\/d)\b/g,'-').replace(/\b(pasal|bab)\b/g,' ').replace(/\b(ayat|ayatnya)\b/g,' ').replace(/[,:;]/g,' ').replace(/\s+/g,' ').trim();}
+  function parseReference(raw){
+    let s=normalize(raw); s=s.replace(/\bkitab\b/g,'').trim();
+    // Numbered book names, including spoken ordinal forms such as "satu Korintus".
+    const bookMatch=s.match(/^(?:(1|2|3)\s*)?([a-z]+(?:\s+[a-z]+){0,3}?)(?=\s+\d|$)(?:\s+(.*))?$/i);
+    if(!bookMatch) throw new Error('Referensi belum dikenali. Coba ucapkan “Matius pasal 5 ayat 1 sampai 5”.');
+    let prefix=bookMatch[1]||'', book=bookMatch[2].trim(), tail=(bookMatch[3]||'').trim();
+    // If regex grouped a trailing number into the book, split it back out.
+    const knownLike = /^(kejadian|keluaran|imamat|bilangan|ulangan|yosua|hakim-hakim|rut|1 samuel|2 samuel|1 raja-raja|2 raja-raja|1 tawarikh|2 tawarikh|ezra|nehemia|ester|ayub|mazmur|amsal|pengkhotbah|kidung agung|yesaya|yeremia|ratapan|yehezkiel|daniel|hosea|yoel|amos|obaja|yunus|mikha|nahum|habakuk|zefanya|hag hai|zakharia|maleakhi|matius|markus|lukas|yohanes|kisah para rasul|roma|1 korintus|2 korintus|galatia|efesus|filipi|kolose|1 tesalonika|2 tesalonika|1 timotius|2 timotius|titus|filemon|ibrani|yakobus|1 petrus|2 petrus|1 yohanes|2 yohanes|3 yohanes|yudas|wahyu)$/i;
+    let combined=(prefix?prefix+' ':'')+book;
+    // Prefer splitting on a trailing chapter number if book text is not a known book name.
+    if(!knownLike.test(combined) && /\s/.test(book)){
+      const m=combined.match(/^(.*?\b(?:korintus|tesalonika|timotius|petrus|yohanes|raja-raja|tawarikh|samuel|rasul))\s+(\d+)$/i);
+      if(m){combined=m[1];tail=(m[2]+' '+tail).trim();}
+    }
+    const numericTail=tail.match(/^(\d+)?\s*(?:-\s*(\d+))?$/);
+    let chapter=null,startVerse=null,endVerse=null;
+    if(numericTail && numericTail[1]) chapter=Number(numericTail[1]);
+    // Support compact forms: "Matius 5 1-5" and explicit verse wording after normalization.
+    const compact=raw.toLowerCase().match(/(?:pasal|bab)\s*(\d+)(?:\s*(?:ayat)?\s*(\d+)(?:\s*(?:sampai|hingga|-|s\/d)\s*(\d+))?)?/i);
+    const colon=raw.match(/\b(\d+)\s*:\s*(\d+)(?:\s*[-–]\s*(\d+))?/);
+    if(colon){chapter=Number(colon[1]);startVerse=Number(colon[2]);endVerse=Number(colon[3]||colon[2]);}
+    else if(compact){chapter=Number(compact[1]);if(compact[2]){startVerse=Number(compact[2]);endVerse=Number(compact[3]||compact[2]);}}
+    else if(numericTail && numericTail[1]) { chapter=Number(numericTail[1]); if(numericTail[2]){startVerse=chapter; endVerse=Number(numericTail[2]); chapter=null;} }
+    // Direct numeric forms such as "Matius 5 ayat 1-5" after normalization.
+    const direct=raw.match(/\b(?:pasal|bab)\s*(\d+)\s*(?:ayat)?\s*(\d+)?\s*(?:sampai(?: dengan)?|hingga|-|s\/d)?\s*(\d+)?/i);
+    if(direct){chapter=Number(direct[1]);if(direct[2]){startVerse=Number(direct[2]);endVerse=Number(direct[3]||direct[2]);}}
+    if(!chapter && !startVerse) chapter=1; // A book-only request opens its first chapter.
+    if(chapter!==null && (!Number.isInteger(chapter)||chapter<1)) throw new Error('Nomor pasal tidak valid.');
+    if(startVerse!==null && (!Number.isInteger(startVerse)||startVerse<1||endVerse<startVerse)) throw new Error('Rentang ayat tidak valid.');
+    return {book:combined.replace(/\s+/g,' ').trim(),chapter,startVerse,endVerse};
+  }
+  async function loadReference(raw){
+    if(!raw.trim()) {sayStatus('Masukkan atau ucapkan referensi Alkitab terlebih dahulu.');return;}
+    $('searchBtn').disabled=true; sayStatus('Mencari referensi…');
+    try{
+      const parsed=parseReference(raw);
+      const res=await fetch('/.netlify/functions/verse?book='+encodeURIComponent(parsed.book)+'&chapter='+(parsed.chapter||1)+(parsed.startVerse?'&start='+parsed.startVerse+'&end='+parsed.endVerse:''));
+      const data=await res.json(); if(!res.ok) throw new Error(data.error||'Tidak dapat mengambil ayat.');
+      const result=data.data||data; const book=result.book?.name||parsed.book; const chapter=result.chapter||parsed.chapter||1;
+      let list=result.verses||[];
+      if(result.verse_number){list=[{verse_number:result.verse_number,text:result.text}];}
+      if(parsed.startVerse) list=list.filter(v=>Number(v.verse_number)>=parsed.startVerse&&Number(v.verse_number)<=parsed.endVerse);
+      if(!list.length) throw new Error('Ayat tidak ditemukan. Periksa nomor pasal atau ayat.');
+      title.textContent=`${book} ${chapter}${parsed.startVerse?':'+parsed.startVerse+(parsed.endVerse!==parsed.startVerse?'–'+parsed.endVerse:''):''}`;
+      versesBox.className=''; versesBox.replaceChildren();
+      list.forEach(v=>{const div=document.createElement('div');div.className='verse';const n=document.createElement('span');n.className='num';n.textContent=v.verse_number;const p=document.createElement('p');p.textContent=v.text;div.append(n,p);versesBox.append(div);});
+      currentText=list.map(v=>`${v.verse_number}. ${v.text}`).join(' ');
+      $('readBtn').disabled=false; sayStatus(`Berhasil memuat ${list.length} ayat. ${parsed.book.trim()===book?'':'Kitab dikenali sebagai '+book+'.'}`);
+    }catch(e){sayStatus(e.message||'Terjadi kesalahan.');}
+    finally{$('searchBtn').disabled=false;}
+  }
+  $('searchBtn').addEventListener('click',()=>loadReference(input.value));
+  input.addEventListener('keydown',e=>{if(e.key==='Enter')loadReference(input.value)});
+  document.querySelectorAll('[data-ref]').forEach(b=>b.addEventListener('click',()=>{input.value=b.dataset.ref;loadReference(input.value)}));
+  const SpeechRecognition=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(SpeechRecognition){recognition=new SpeechRecognition();recognition.lang='id-ID';recognition.continuous=false;recognition.interimResults=true;
+    recognition.onstart=()=>{listening=true;$('micBtn').disabled=true;$('stopMicBtn').hidden=false;sayStatus('Mendengarkan… ucapkan referensi Alkitab.');};
+    recognition.onresult=e=>{let interim='',final='';for(let i=e.resultIndex;i<e.results.length;i++){const t=e.results[i][0].transcript;if(e.results[i].isFinal)final+=t;else interim+=t;}input.value=final||interim;if(final){sayStatus('Terdengar: '+final);loadReference(final);}};
+    recognition.onerror=e=>sayStatus(e.error==='not-allowed'?'Izin mikrofon ditolak. Izinkan mikrofon di pengaturan browser.':'Pengenalan suara gagal: '+e.error+'. Coba lagi.');
+    recognition.onend=()=>{listening=false;$('micBtn').disabled=false;$('stopMicBtn').hidden=true;};
+    $('micBtn').addEventListener('click',()=>{try{recognition.start()}catch(e){sayStatus('Mikrofon sedang aktif.');}});
+    $('stopMicBtn').addEventListener('click',()=>recognition.stop());
+  }else{$('micBtn').disabled=true;sayStatus('Browser ini belum mendukung pengenalan suara. Buka situs dengan Google Chrome di Android.');}
+  function speech(text){if(!('speechSynthesis'in window)){sayStatus('Fitur suara tidak didukung browser ini.');return;}speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);u.lang='id-ID';u.rate=Number($('voiceRate').value);u.onstart=()=>sayStatus('Sedang membacakan ayat…');u.onend=()=>sayStatus('Selesai membacakan ayat.');u.onerror=()=>sayStatus('Suara tidak dapat diputar. Periksa pengaturan suara perangkat.');speechSynthesis.speak(u);}
+  $('readBtn').addEventListener('click',()=>{if(currentText)speech(title.textContent+'. '+currentText)});
+  $('pauseBtn').addEventListener('click',()=>speechSynthesis.pause());$('resumeBtn').addEventListener('click',()=>speechSynthesis.resume());$('stopReadBtn').addEventListener('click',()=>speechSynthesis.cancel());
+  if('speechSynthesis'in window){const update=()=>{const active=speechSynthesis.speaking||speechSynthesis.pending;$('pauseBtn').disabled=!active;$('resumeBtn').disabled=!speechSynthesis.paused;$('stopReadBtn').disabled=!active;};setInterval(update,500);}
+})();
+</script>
+</body>
+</html>
