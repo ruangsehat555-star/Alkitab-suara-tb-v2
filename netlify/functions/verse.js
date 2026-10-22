@@ -1,8 +1,12 @@
 const BASE_URL = 'https://use.apiindonesia.id/api/v1/alkitab';
 
-const json = (body, status = 200) => new Response(JSON.stringify(body), {
-  status,
-  headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }
+const json = (body, status = 200) => ({
+  statusCode: status,
+  headers: {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store'
+  },
+  body: JSON.stringify(body)
 });
 
 function normalizeName(value = '') {
