@@ -41,7 +41,8 @@
 (() => {
   const $ = id => document.getElementById(id);
   const input=$('reference'), status=$('status'), versesBox=$('verses'), title=$('referenceTitle');
-  let currentText='', recognition=null, listening=false;
+  let currentText='', currentVerses=[], recognition=null, listening=false;
+  let speechQueue=[], speechIndex=0, speechRunId=0;
   const sayStatus = text => status.textContent=text;
   function normalize(s){return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[–—]/g,'-').replace(/\b(satu|pertama)\b/g,'1').replace(/\b(dua|kedua)\b/g,'2').replace(/\b(tiga|ketiga)\b/g,'3').replace(/\b(empat)\b/g,'4').replace(/\b(lima)\b/g,'5').replace(/\b(enam)\b/g,'6').replace(/\b(tujuh)\b/g,'7').replace(/\b(delapan)\b/g,'8').replace(/\b(sembilan)\b/g,'9').replace(/\b(sepuluh)\b/g,'10').replace(/\b(sebelas)\b/g,'11').replace(/\b(dua belas)\b/g,'12').replace(/\b(sampai dengan|sampai|hingga|s\/d)\b/g,'-').replace(/\b(pasal|bab)\b/g,' ').replace(/\b(ayat|ayatnya)\b/g,' ').replace(/[,:;]/g,' ').replace(/\s+/g,' ').trim();}
   function parseReference(raw){
@@ -90,7 +91,8 @@
       title.textContent=`${book} ${chapter}${parsed.startVerse?':'+parsed.startVerse+(parsed.endVerse!==parsed.startVerse?'–'+parsed.endVerse:''):''}`;
       versesBox.className=''; versesBox.replaceChildren();
       list.forEach(v=>{const div=document.createElement('div');div.className='verse';const n=document.createElement('span');n.className='num';n.textContent=v.verse_number;const p=document.createElement('p');p.textContent=v.text;div.append(n,p);versesBox.append(div);});
-      currentText=list.map(v=>`${v.verse_number}. ${v.text}`).join(' ');
+      currentVerses=list.map(v=>String(v.text||'').trim()).filter(Boolean);
+      currentText=currentVerses.join(' ');
       $('readBtn').disabled=false; sayStatus(`Berhasil memuat ${list.length} ayat. ${parsed.book.trim()===book?'':'Kitab dikenali sebagai '+book+'.'}`);
     }catch(e){sayStatus(e.message||'Terjadi kesalahan.');}
     finally{$('searchBtn').disabled=false;}
@@ -107,46 +109,37 @@
     $('micBtn').addEventListener('click',()=>{try{recognition.start()}catch(e){sayStatus('Mikrofon sedang aktif.');}});
     $('stopMicBtn').addEventListener('click',()=>recognition.stop());
   }else{$('micBtn').disabled=true;sayStatus('Browser ini belum mendukung pengenalan suara. Buka situs dengan Google Chrome di Android.');}
-  let speechRequestId=0;
   function speech(text){
-    if(!('speechSynthesis' in window) || !('SpeechSynthesisUtterance' in window)){
-      sayStatus('Fitur suara tidak didukung browser ini. Buka situs dengan Google Chrome.');
-      return;
-    }
-    const synth=window.speechSynthesis;
-    const requestId=++speechRequestId;
-    // Android Chrome kadang gagal jika speak() dipanggil tepat setelah cancel().
-    synth.cancel();
-    const startSpeaking=()=>{
-      if(requestId!==speechRequestId)return;
-      const u=new SpeechSynthesisUtterance(text);
-      u.lang='id-ID';
-      u.rate=Number($('voiceRate').value);
-      u.pitch=1;
-      const voices=synth.getVoices();
-      const indonesianVoice=voices.find(v=>/^id(-|_)?ID$/i.test(v.lang)) ||
-                            voices.find(v=>/^id\b/i.test(v.lang));
-      if(indonesianVoice)u.voice=indonesianVoice;
-      u.onstart=()=>{if(requestId===speechRequestId)sayStatus('Sedang membacakan ayat…');};
-      u.onend=()=>{if(requestId===speechRequestId)sayStatus('Selesai membacakan ayat.');};
-      u.onerror=(event)=>{
-        if(requestId!==speechRequestId)return;
-        if(event.error==='canceled'||event.error==='interrupted')return;
-        sayStatus('TTS gagal ('+(event.error||'error')+'). Coba muat ulang halaman atau pilih suara Indonesia di pengaturan HP.');
-      };
-      synth.speak(u);
+    if(!('speechSynthesis' in window)){sayStatus('Fitur suara tidak didukung browser ini.');return;}
+    // Batalkan antrean lama, lalu beri waktu singkat sebelum memulai antrean baru.
+    const runId=++speechRunId;
+    speechSynthesis.cancel();
+    speechQueue=(currentVerses.length ? currentVerses.slice() : [text]).filter(Boolean);
+    speechIndex=0;
+    window.setTimeout(()=>{if(runId===speechRunId) speakNext(runId);},250);
+  }
+  function speakNext(runId){
+    if(runId!==speechRunId)return;
+    if(speechIndex>=speechQueue.length){sayStatus('Selesai membacakan ayat.');return;}
+    const text=String(speechQueue[speechIndex]||'').trim();
+    speechIndex++;
+    if(!text){speakNext(runId);return;}
+    const u=new SpeechSynthesisUtterance(text);
+    u.lang='id-ID';
+    u.rate=Number($('voiceRate').value);
+    u.onstart=()=>{if(runId===speechRunId)sayStatus('Sedang membacakan ayat '+speechIndex+' dari '+speechQueue.length+'…');};
+    u.onend=()=>{if(runId===speechRunId)window.setTimeout(()=>speakNext(runId),180);};
+    u.onerror=(e)=>{
+      if(runId!==speechRunId || e.error==='canceled' || e.error==='interrupted')return;
+      sayStatus('TTS gagal ('+(e.error||'tidak diketahui')+'). Coba muat ulang halaman atau pilih suara Indonesia di pengaturan HP.');
     };
-    // Beri waktu Android menyelesaikan cancel sebelum memulai suara baru.
-    window.setTimeout(startSpeaking,150);
+    speechSynthesis.speak(u);
   }
-  if('speechSynthesis' in window){
-    // Daftar suara Android kadang baru tersedia setelah browser memuatnya.
-    window.speechSynthesis.getVoices();
-    window.speechSynthesis.addEventListener?.('voiceschanged',()=>window.speechSynthesis.getVoices());
-  }
-  $('readBtn').addEventListener('click',()=>{if(currentText)speech(title.textContent+'. '+currentText)});
-  $('pauseBtn').addEventListener('click',()=>speechSynthesis.pause());$('resumeBtn').addEventListener('click',()=>speechSynthesis.resume());$('stopReadBtn').addEventListener('click',()=>speechSynthesis.cancel());
-  if('speechSynthesis'in window){const update=()=>{const active=speechSynthesis.speaking||speechSynthesis.pending;$('pauseBtn').disabled=!active;$('resumeBtn').disabled=!speechSynthesis.paused;$('stopReadBtn').disabled=!active;};setInterval(update,500);}
+  $('readBtn').addEventListener('click',()=>{if(currentText)speech(currentText)});
+  $('pauseBtn').addEventListener('click',()=>speechSynthesis.pause());
+  $('resumeBtn').addEventListener('click',()=>speechSynthesis.resume());
+  $('stopReadBtn').addEventListener('click',()=>{speechRunId++;speechQueue=[];speechIndex=0;speechSynthesis.cancel();sayStatus('Pembacaan dihentikan.');});
+  if('speechSynthesis' in window){const update=()=>{const active=speechSynthesis.speaking||speechSynthesis.pending;$('pauseBtn').disabled=!active;$('resumeBtn').disabled=!speechSynthesis.paused;$('stopReadBtn').disabled=!active;};setInterval(update,500);}
 })();
 </script>
 </body>
