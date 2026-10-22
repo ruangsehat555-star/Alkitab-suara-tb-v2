@@ -91,7 +91,7 @@
       title.textContent=`${book} ${chapter}${parsed.startVerse?':'+parsed.startVerse+(parsed.endVerse!==parsed.startVerse?'–'+parsed.endVerse:''):''}`;
       versesBox.className=''; versesBox.replaceChildren();
       list.forEach(v=>{const div=document.createElement('div');div.className='verse';const n=document.createElement('span');n.className='num';n.textContent=v.verse_number;const p=document.createElement('p');p.textContent=v.text;div.append(n,p);versesBox.append(div);});
-      currentVerses=list.map(v=>String(v.text||'').trim()).filter(Boolean);
+      currentVerses=list.map(v=>{const verseNumber=String(v.verse_number||'').trim();const verseText=String(v.text||'').trim();return verseText?(verseNumber?'Ayat '+verseNumber+': ':'')+verseText:'';}).filter(Boolean);
       currentText=currentVerses.join(' ');
       $('readBtn').disabled=false; sayStatus(`Berhasil memuat ${list.length} ayat. ${parsed.book.trim()===book?'':'Kitab dikenali sebagai '+book+'.'}`);
     }catch(e){sayStatus(e.message||'Terjadi kesalahan.');}
